@@ -7,13 +7,6 @@ on:
     branches: [ main, master, proton_11.0b5 ]
   workflow_dispatch:
 
-env:
-  # These workflow files may live on a different branch, but the Wine source,
-  # the build scripts and the patches must all come from one and the same ref:
-  # the patches are diffs against BUILD_REF, so checking out anything else
-  # makes them fail to apply (and the build scripts may not exist at all).
-  BUILD_REF: master
-
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -31,10 +24,9 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           df -h
       
-      - name: Checkout repository (${{ env.BUILD_REF }})
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.BUILD_REF }}
           submodules: recursive
       
       - name: Set up build environment
@@ -250,8 +242,6 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/proton_11.0b5')) || github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: write
     
     steps:
       - name: Download all artifacts
@@ -271,12 +261,7 @@ jobs:
         run: |
           BRANCH=${GITHUB_REF_NAME}
           DATE=$(date +%Y%m%d)
-          # run_number keeps the tag unique per run. A date-only tag makes two runs
-          # on the same day (push + manual dispatch) race in action-gh-release:
-          # createRelease returns 422 already_exists / 403, the action retries the
-          # identical call 3 times and aborts with "Too many retries. Aborting...".
-          # Re-runs keep the same run_number, so they update the existing release.
-          TAG_NAME="build-${BRANCH}-${DATE}-sdk35-r${{ github.run_number }}"
+          TAG_NAME="build-${BRANCH}-${DATE}-sdk35"
           echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
           echo "Generated tag: ${TAG_NAME}"
       

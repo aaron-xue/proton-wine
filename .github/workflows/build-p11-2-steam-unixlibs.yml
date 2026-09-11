@@ -1,7 +1,13 @@
-name: Build Proton 11.0-1 Steam + UnixLibs (x86_64 + arm64ec)
+name: Build Proton 11.0-2 Steam + UnixLibs (x86_64 + arm64ec)
 
-# Manually-triggered build of Proton 11.0-1 for both architectures, packaged as
+# Manually-triggered build of Proton 11.0-2 for both architectures, packaged as
 # WinNative content packages (.wcp).
+#
+# "11.0-2" here is exact, not a guess. ValveSoftware/Proton pins the wine tree as a
+# submodule, and:
+#   tag proton-11.0-1 -> wine 81d78e4f3ea  (what the 11.0-1 layers were built from)
+#   tag proton-11.0-2 -> wine dc26e618470  (ValveSoftware/wine proton_11.0 tip, merged here)
+# Re-check with: gh api repos/ValveSoftware/Proton/contents/wine?ref=proton-11.0-2 -q .sha
 #
 # The layer itself carries no Steam binaries: the app installs the lsteamclient
 # bridge into the container. "steam" in the versionName is the capability marker
@@ -74,6 +80,16 @@ jobs:
           check "NtQueryVirtualMemory unload hook"  dlls/ntdll/unix/virtual.c      "MemoryWineUnloadUnixLib"
           check "wow64 thunk"                       dlls/wow64/virtual.c           "MemoryWineLoadUnixLibByName"
           check "info classes in winternl.h"        include/winternl.h             "MemoryWineLoadUnixLibByNameWow64"
+          check "D: survives prefix creation"       dlls/ntdll/unix/server.c       'symlink( "/storage/emulated/0/", "dosdevices/d:" )'
+          # 11.0-2 specific: proves the ValveSoftware merge is in this tree rather than a
+          # stale 11.0-1 checkout. e4054376336 added cooperative suspend, and 943f68fadda
+          # reverted the FEX stats shm interface that our unixlib cases used to sit beside.
+          check "11.0-2 cooperative suspend"        server/protocol.def            "SELECT_COOPERATIVE_SUSPEND"
+          if grep -q MemoryFexStatsShm dlls/ntdll/unix/virtual.c; then
+            echo "  MISS : MemoryFexStatsShm revert (943f68fadda) not applied"; fail=1
+          else
+            echo "  ok   : MemoryFexStatsShm revert applied"
+          fi
           test "$fail" -eq 0 || { echo "UnixLibs support is incomplete -- refusing to build"; exit 1; }
 
       - name: Download and extract termuxfs for ${{ matrix.arch }}
@@ -227,9 +243,9 @@ jobs:
           set -euo pipefail
           VC='${{ github.event.inputs.version_code }}'
           if [ "${{ matrix.arch }}" == "x86_64" ]; then
-            VERSION_NAME="11.0-1-x86_64-steam"
+            VERSION_NAME="11.0-2-x86_64-steam"
           else
-            VERSION_NAME="11.0-1-arm64ec-steam-unixlib"
+            VERSION_NAME="11.0-2-arm64ec-steam-unixlib"
           fi
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
 
@@ -279,10 +295,10 @@ jobs:
           set -euo pipefail
           if [ "${{ matrix.arch }}" == "x86_64" ]; then
             OUT=$HOME/compiled-files-x86_64
-            ASSET=Proton-11.0-1-x86-64-steam.wcp
+            ASSET=Proton-11.0-2-x86-64-steam.wcp
           else
             OUT=$HOME/compiled-files-aarch64
-            ASSET=Proton-11.0-1-arm64ec-steam-unix.wcp
+            ASSET=Proton-11.0-2-arm64ec-steam-unix.wcp
           fi
           echo "ASSET=$ASSET" >> $GITHUB_ENV
 
