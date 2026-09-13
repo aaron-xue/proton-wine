@@ -3589,6 +3589,30 @@ BOOL WINAPI NtUserWaitMessage(void)
 }
 
 /***********************************************************************
+ *           peek_message_limiter
+ *
+ * Delay, in milliseconds, applied to message loops that keep calling
+ * PeekMessage() without finding anything to process. Controlled by
+ * WINE_PEEK_LIMITER; 0 (the default) disables the limiter.
+ */
+static int peek_message_limiter(void)
+{
+    static int delay = -1;
+
+    if (delay < 0)
+    {
+        const char *env = getenv( "WINE_PEEK_LIMITER" );
+        int value = env ? atoi( env ) : 0;
+
+        if (value < 0) value = 0;
+        else if (value > 1000) value = 1000;
+        delay = value;
+    }
+
+    return delay;
+}
+
+/***********************************************************************
  *           NtUserPeekMessage  (win32u.@)
  */
 BOOL WINAPI NtUserPeekMessage( MSG *msg_out, HWND hwnd, UINT first, UINT last, UINT flags )
@@ -3607,6 +3631,7 @@ BOOL WINAPI NtUserPeekMessage( MSG *msg_out, HWND hwnd, UINT first, UINT last, U
             struct thunk_lock_params params = {.dispatch.callback = thunk_lock_callback};
             void *ret_ptr;
             ULONG ret_len;
+            int limiter = peek_message_limiter();
 
             flush_window_surfaces( TRUE );
 
@@ -3616,11 +3641,18 @@ BOOL WINAPI NtUserPeekMessage( MSG *msg_out, HWND hwnd, UINT first, UINT last, U
                 params.locks = *(DWORD *)ret_ptr;
                 params.restore = TRUE;
             }
-            NtYieldExecution();
+            if (limiter)
+            {
+                LARGE_INTEGER timeout;
+                timeout.QuadPart = -(LONGLONG)limiter * 10000;  /* milliseconds to 100ns units */
+                NtDelayExecution( FALSE, &timeout );
+            }
+            else NtYieldExecution();
             KeUserDispatchCallback( &params.dispatch, sizeof(params), &ret_ptr, &ret_len );
         }
         return FALSE;
     }
+
 
     check_for_driver_events();
 
